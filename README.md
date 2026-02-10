@@ -34,8 +34,11 @@ hn_popular_blogs_bestpartnerstv/
 │   └── hn_intel.db                # SQLite database (created after first fetch)
 │
 ├── docs/                          # Documentation and input data
+│   ├── AGENT_DEBATE.md            # How 5 AI agents debated to design this project
+│   ├── DEVELOPER_GUIDE.md         # In-depth developer reference
+│   ├── USER_GUIDE.md              # Step-by-step user guide with 10 use cases
 │   ├── hn-blogs.opml              # OPML feed list (92 blog RSS URLs)
-│   └── findings.md                # Analysis findings documentation
+│   └── findings.md                # Debate consensus document
 │
 ├── hn_intel/                      # Main source code package
 │   ├── __init__.py                # Package initializer (marks directory as Python package)
@@ -581,6 +584,44 @@ Takes analysis results and generates formatted Markdown and JSON files. Uses tab
 
 **cli.py**
 Command-line interface using Click library. Defines four commands (fetch, status, analyze, report) with options and help text. Entry point is registered in pyproject.toml.
+
+---
+
+## How This Project Was Designed: The 5-Agent Debate
+
+This project's architecture was not designed by a single person — it emerged from a structured debate between five AI agents, each advocating for a different approach to analyzing the HN blog dataset.
+
+### The Agents
+
+| Agent | Role | Proposed Approach |
+|-------|------|-------------------|
+| **Trend Analyst** | Data scientist | Time-series keyword analysis with TF-IDF |
+| **Network Mapper** | Graph theorist | Citation network with PageRank centrality |
+| **Content Clusterer** | ML engineer | Blog similarity clustering via K-means |
+| **Practical Builder** | Product engineer | Simple, immediately useful CLI tool |
+| **Connector** | Systems thinker | Hybrid platform combining all approaches |
+
+### The Debate Process
+
+The debate ran for three structured rounds:
+
+1. **Round 1 — Propose**: Each agent presented their vision for the best use of the 92-blog dataset, with technical justification and expected outcomes.
+2. **Round 2 — Critique**: Agents challenged each other's proposals, identifying weaknesses (e.g., sparse citation graphs, over-engineering risks, cold-start problems).
+3. **Round 3 — Defend or Concede**: Agents either defended their positions with counterarguments or conceded points and converged toward a consensus.
+
+### The Outcome
+
+The agents converged on the **Connector's hybrid proposal** — combining trend analysis, network mapping, and clustering into a single CLI platform. Key consensus points:
+
+- Start with RSS metadata only (no HTML crawling in v1)
+- Use TF-IDF over embeddings (fast, no model downloads, sufficient for RSS text)
+- Accept that the citation graph would be sparse but still informative
+- Keep the interface simple (CLI + file output, no web dashboard)
+- Sequential feed fetching with polite delays (no async complexity)
+
+This consensus directly shaped the 10-step implementation plan that produced the codebase you see today.
+
+For the full debate transcript and detailed analysis, see [`docs/AGENT_DEBATE.md`](docs/AGENT_DEBATE.md).
 
 ---
 
