@@ -1,0 +1,728 @@
+# HN Blog Intelligence Platform (hn-intel)
+
+A CLI tool that analyzes the Hacker News tech blogging ecosystem through data science.
+
+---
+
+## What This Project Does
+
+Imagine you want to understand what the most influential tech bloggers on Hacker News are writing about. This tool automates that entire research pipeline.
+
+**Step 1: Data Collection**
+The tool reads an OPML file (think of it as an XML catalog) containing 92 RSS feed URLs from popular tech blogs. RSS feeds are like automated newsletters - each blog publishes a feed that lists their recent posts with titles, content, and timestamps. The tool fetches all these feeds, parses them, and stores every blog post in a local SQLite database (a lightweight file-based database, similar to an embedded H2 or Derby database in Java).
+
+**Step 2: Content Analysis**
+Once you have thousands of blog posts stored, the tool runs TF-IDF analysis. TF-IDF (Term Frequency-Inverse Document Frequency) is a statistical method that identifies important keywords. It works like this: if a word appears frequently in one document but rarely across all documents, it's probably significant to that specific document. Think of it as a weighted scoring system where common words like "the" get low scores, but technical terms like "kubernetes" or "rust" get high scores. The tool uses this to detect trending topics over time - what keywords are accelerating in usage week-over-week or month-over-month.
+
+**Step 3: Network Analysis**
+The tool also scans blog post content for URLs that link to other blogs in the dataset. This creates a citation network - a directed graph where nodes are blogs and edges are citations. It then applies PageRank (the algorithm Google famously used for search ranking) to identify the most influential blogs. A blog with high PageRank is cited by many other blogs, especially by blogs that are themselves highly cited. It's like academic citations, but for tech blogs.
+
+**Step 4: Clustering and Similarity**
+Finally, the tool uses K-means clustering (an unsupervised machine learning algorithm) to group similar blogs together. It converts each blog into a high-dimensional vector based on its vocabulary, then finds natural groupings. For example, it might discover that blogs about Linux systems administration cluster together, separate from blogs about web development. It also computes cosine similarity scores between every pair of blogs to quantify how similar their content is.
+
+**Output**
+All analysis results are saved as human-readable Markdown reports and machine-readable JSON files. You get trend reports, network graphs, cluster assignments, and similarity matrices.
+
+---
+
+## Project Structure
+
+```
+hn_popular_blogs_bestpartnerstv/
+│
+├── data/                          # Database storage
+│   └── hn_intel.db                # SQLite database (created after first fetch)
+│
+├── docs/                          # Documentation and input data
+│   ├── hn-blogs.opml              # OPML feed list (92 blog RSS URLs)
+│   └── findings.md                # Analysis findings documentation
+│
+├── hn_intel/                      # Main source code package
+│   ├── __init__.py                # Package initializer (marks directory as Python package)
+│   ├── analyzer.py                # TF-IDF trend analysis and keyword detection
+│   ├── cli.py                     # Click-based CLI commands (fetch, status, analyze, report)
+│   ├── clusters.py                # K-means clustering and similarity computation
+│   ├── db.py                      # SQLite schema initialization and connection handling
+│   ├── fetcher.py                 # RSS feed fetching and parsing logic
+│   ├── network.py                 # Citation extraction, graph building, PageRank
+│   └── reports.py                 # Markdown and JSON report generation
+│
+├── output/                        # Generated reports (created by report command)
+│   ├── summary.md                 # High-level summary of all analyses
+│   ├── trends.md                  # Markdown-formatted trend report
+│   ├── trends.json                # Machine-readable trend data
+│   ├── network.md                 # Citation network analysis report
+│   ├── network.json               # Graph data in JSON format
+│   ├── clusters.md                # Blog clustering results
+│   └── clusters.json              # Cluster assignments and similarity matrix
+│
+├── tests/                         # Test suite (73 passing tests)
+│   ├── __init__.py                # Test package initializer
+│   ├── test_analyzer.py           # Tests for TF-IDF and trend detection
+│   ├── test_clusters.py           # Tests for clustering algorithms
+│   ├── test_db.py                 # Tests for database operations
+│   ├── test_fetcher.py            # Tests for RSS feed fetching
+│   ├── test_network.py            # Tests for citation extraction and PageRank
+│   ├── test_opml_parser.py        # Tests for OPML parsing
+│   └── test_reports.py            # Tests for report generation
+│
+├── pyproject.toml                 # Python project metadata and dependencies
+├── requirements.txt               # Pinned dependency versions
+└── README.md                      # This file
+```
+
+---
+
+## Prerequisites
+
+You'll need three things installed on your system:
+
+### 1. Python 3.10 or Higher
+
+Python is an interpreted language (unlike compiled C/C++/Java). Check if you have it:
+
+```bash
+python --version
+# or
+python3 --version
+```
+
+If not installed, download from [python.org](https://www.python.org/downloads/).
+
+**Windows users**: During installation, check "Add Python to PATH".
+
+### 2. pip (Python Package Manager)
+
+`pip` is Python's package manager - think of it like Maven for Java, NuGet for C#, or npm for JavaScript. It downloads libraries from PyPI (Python Package Index) and installs them.
+
+Check if you have it:
+
+```bash
+pip --version
+# or
+pip3 --version
+```
+
+`pip` usually comes bundled with Python. If it's missing, follow [pip installation guide](https://pip.pypa.io/en/stable/installation/).
+
+### 3. git (Optional but Recommended)
+
+To clone the repository:
+
+```bash
+git --version
+```
+
+If not installed, download from [git-scm.com](https://git-scm.com/).
+
+---
+
+## Installation
+
+Follow these steps exactly:
+
+### Step 1: Clone or Download the Project
+
+**Option A - Using git:**
+```bash
+git clone <repository-url>
+cd hn_popular_blogs_bestpartnerstv
+```
+
+**Option B - Without git:**
+- Download the project as a ZIP file
+- Extract it
+- Open terminal/command prompt in the extracted folder
+
+### Step 2: Create a Virtual Environment
+
+A **virtual environment** is an isolated Python installation for your project. Think of it like a project-specific classpath in Java - it keeps this project's dependencies separate from your system Python and other projects.
+
+**On Windows:**
+```bash
+python -m venv .venv
+```
+
+**On macOS/Linux:**
+```bash
+python3 -m venv .venv
+```
+
+What this does: Creates a `.venv` folder containing a clean Python installation.
+
+### Step 3: Activate the Virtual Environment
+
+**On Windows (Command Prompt):**
+```bash
+.venv\Scripts\activate
+```
+
+**On Windows (PowerShell):**
+```bash
+.venv\Scripts\Activate.ps1
+```
+
+**On macOS/Linux:**
+```bash
+source .venv/bin/activate
+```
+
+What this does: Modifies your shell's PATH so `python` and `pip` now point to the virtual environment's isolated installation. You should see `(.venv)` appear in your terminal prompt.
+
+### Step 4: Install the Project with Dependencies
+
+```bash
+pip install -e ".[dev]"
+```
+
+Breaking this down:
+- `pip install`: Install packages
+- `-e`: "Editable" mode - installs the project as a link to source code (like a symbolic link), so code changes take effect immediately without reinstalling
+- `.`: Install the project in the current directory
+- `[dev]`: Include optional "dev" dependencies (pytest for testing)
+
+This command reads `pyproject.toml`, installs all listed dependencies (feedparser, click, scikit-learn, networkx, tabulate, tqdm, requests, pytest), and registers the `hn-intel` command in your PATH.
+
+**Expected output:**
+```
+Obtaining file:///C:/Users/.../hn_popular_blogs_bestpartnerstv
+...
+Successfully installed hn-intel-0.1.0 feedparser-6.x click-8.x scikit-learn-1.x ...
+```
+
+### Step 5: Verify Installation
+
+```bash
+hn-intel --help
+```
+
+You should see the CLI help menu showing available commands.
+
+---
+
+## Quick Start
+
+The typical workflow involves three commands run in sequence:
+
+### Command 1: Fetch Blog Posts
+
+```bash
+hn-intel fetch
+```
+
+**What it does:**
+1. Reads `docs/hn-blogs.opml` to get 92 RSS feed URLs
+2. Fetches each feed over HTTP (with 0.5s delay between requests to be polite)
+3. Parses RSS XML to extract post title, content, URL, publish date
+4. Stores data in `data/hn_intel.db` SQLite database
+5. Skips duplicate posts (based on URL)
+
+**Expected output:**
+```
+Fetching feeds: 100%|████████████████████| 92/92 [01:23<00:00,  1.10it/s]
+Feeds OK: 89
+Feeds errored: 3
+New posts: 2363
+Skipped (duplicate): 0
+```
+
+**Time:** ~1-2 minutes (depends on network speed and feed sizes)
+
+**Note:** Some feeds may fail (timeout, 404, invalid XML). This is normal.
+
+### Command 2: Analyze Data
+
+```bash
+hn-intel analyze
+```
+
+**What it does:**
+1. Computes TF-IDF vectors for all posts grouped by time period (default: monthly)
+2. Detects emerging topics (keywords with accelerating frequency)
+3. Extracts URLs from post content, identifies cross-blog citations
+4. Builds citation graph and computes PageRank centrality
+5. Clusters blogs by content similarity using K-means (default: 8 clusters)
+6. Computes pairwise cosine similarity between all blogs
+
+**Expected output:**
+```
+Computing trends...
+  Periods: 157
+  Emerging topics: 10
+Extracting citations...
+  Citations: 42
+  Graph nodes: 28
+  Graph edges: 42
+Clustering blogs...
+  Blogs clustered: 92
+  Clusters: 8
+
+Top emerging topics:
+  agents (43.36x acceleration)
+  silicon (32.77x acceleration)
+  training (31.14x acceleration)
+  ...
+
+Top blogs by PageRank:
+  mitchellh.com (PR: 0.0380)
+  matklad.github.io (PR: 0.0357)
+  ...
+
+Analysis complete.
+```
+
+**Time:** ~10-30 seconds (depends on dataset size)
+
+### Command 3: Generate Reports
+
+```bash
+hn-intel report
+```
+
+**What it does:**
+1. Re-runs the analysis pipeline (same as `analyze` command)
+2. Generates 7 report files in `output/` directory:
+   - `summary.md`: Overview with key metrics and top results
+   - `trends.md`: Detailed trend analysis in Markdown
+   - `trends.json`: Trend data in JSON format
+   - `network.md`: Citation network analysis
+   - `network.json`: Graph structure as JSON
+   - `clusters.md`: Blog cluster descriptions
+   - `clusters.json`: Cluster assignments and similarity matrix
+
+**Expected output:**
+```
+Running analysis...
+Generating reports...
+
+Reports written to output/:
+  output/summary.md
+  output/trends.md
+  output/trends.json
+  output/network.md
+  output/network.json
+  output/clusters.md
+  output/clusters.json
+```
+
+**Time:** ~10-30 seconds
+
+---
+
+## CLI Reference
+
+### `hn-intel fetch`
+
+Fetch RSS feeds and populate the database.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--opml` | string | `docs/hn-blogs.opml` | Path to OPML file containing feed URLs |
+| `--timeout` | int | `30` | HTTP request timeout in seconds |
+| `--delay` | float | `0.5` | Delay between feed requests (rate limiting) |
+
+**Example:**
+```bash
+hn-intel fetch --opml custom-feeds.opml --timeout 60 --delay 1.0
+```
+
+### `hn-intel status`
+
+Display database statistics.
+
+**No options.**
+
+**Output:**
+```
+Blogs: 92
+Posts: 2363
+Last fetch: 2026-02-09 14:30:00
+```
+
+### `hn-intel analyze`
+
+Run analysis pipeline and print summary to console (no files generated).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--max-features` | int | `500` | Maximum number of TF-IDF features (vocabulary size) |
+| `--n-clusters` | int | `8` | Number of K-means clusters to create |
+| `--period` | choice | `month` | Trend aggregation period: `month` or `week` |
+
+**Example:**
+```bash
+hn-intel analyze --max-features 1000 --n-clusters 10 --period week
+```
+
+### `hn-intel report`
+
+Run analysis and generate all output files.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--output-dir` | string | `output` | Directory for generated reports |
+| `--max-features` | int | `500` | Maximum number of TF-IDF features |
+| `--n-clusters` | int | `8` | Number of K-means clusters |
+| `--period` | choice | `month` | Trend aggregation period: `month` or `week` |
+
+**Example:**
+```bash
+hn-intel report --output-dir results --max-features 1000 --n-clusters 12
+```
+
+---
+
+## Output Files
+
+After running `hn-intel report`, you'll find these files in the `output/` directory:
+
+### `summary.md`
+High-level overview report with:
+- Dataset statistics (blog count, post count, date range)
+- Top 10 emerging topics with acceleration metrics
+- Top 10 most-cited blogs by PageRank score
+- Blog cluster summary table
+
+**Use case:** Quick executive summary of findings.
+
+### `trends.md`
+Detailed trend analysis with:
+- All detected emerging topics ranked by acceleration
+- Time-series data showing keyword frequency over time
+- Period-by-period breakdown
+
+**Use case:** Understanding what topics are gaining momentum.
+
+### `trends.json`
+Machine-readable JSON containing:
+```json
+{
+  "periods": [
+    {"period": "2024-01", "keywords": {"ai": 0.023, "rust": 0.015, ...}},
+    ...
+  ],
+  "emerging": [
+    {"keyword": "agents", "acceleration": 43.36, "recent_score": 0.021}
+  ]
+}
+```
+
+**Use case:** Importing trend data into other tools or scripts.
+
+### `network.md`
+Citation network analysis with:
+- PageRank rankings (most influential blogs)
+- In-degree and out-degree statistics
+- Network metrics (node count, edge count, density)
+
+**Use case:** Identifying thought leaders and information hubs.
+
+### `network.json`
+Graph structure as JSON:
+```json
+{
+  "nodes": [{"id": "mitchellh.com", "pagerank": 0.038, ...}],
+  "edges": [{"source": "blog-a.com", "target": "blog-b.com"}],
+  "centrality": {"mitchellh.com": {"pagerank": 0.038, "in_degree": 2, ...}}
+}
+```
+
+**Use case:** Visualizing the citation network in tools like Gephi or D3.js.
+
+### `clusters.md`
+Blog clustering results with:
+- Cluster labels (top 5 keywords per cluster)
+- Blog assignments to clusters
+- Cluster size statistics
+
+**Use case:** Understanding blog topic groupings.
+
+### `clusters.json`
+Detailed cluster data and similarity matrix:
+```json
+{
+  "clusters": [
+    {"cluster": 0, "label": "linux, kernel, system, driver, hardware", "blogs": [...]}
+  ],
+  "similarity_matrix": [[1.0, 0.23, ...], [0.23, 1.0, ...]]
+}
+```
+
+**Use case:** Programmatic access to clustering and similarity scores.
+
+---
+
+## Running Tests
+
+The project includes a comprehensive test suite with 73 tests across 7 test files.
+
+**Run all tests:**
+```bash
+python -m pytest tests/ -v
+```
+
+Breaking this down:
+- `python -m pytest`: Run pytest module (the `-m` flag runs a module as a script)
+- `tests/`: Directory to search for test files
+- `-v`: Verbose mode (shows individual test names)
+
+**Expected output:**
+```
+tests/test_analyzer.py::test_compute_trends PASSED
+tests/test_analyzer.py::test_detect_emerging_topics PASSED
+tests/test_clusters.py::test_compute_blog_vectors PASSED
+tests/test_clusters.py::test_cluster_blogs PASSED
+...
+========== 73 passed in 2.34s ==========
+```
+
+### Test Coverage
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `test_analyzer.py` | 12 | TF-IDF vectorization, trend computation, emerging topic detection |
+| `test_clusters.py` | 10 | K-means clustering, similarity matrices, cluster labeling |
+| `test_db.py` | 8 | Database schema, blog/post insertion, uniqueness constraints |
+| `test_fetcher.py` | 15 | RSS parsing, feed fetching, error handling, deduplication |
+| `test_network.py` | 11 | URL extraction, citation graphs, PageRank computation |
+| `test_opml_parser.py` | 9 | OPML parsing, feed URL extraction, malformed input handling |
+| `test_reports.py` | 8 | Report generation, file I/O, Markdown/JSON formatting |
+
+**Run specific test file:**
+```bash
+python -m pytest tests/test_analyzer.py -v
+```
+
+**Run with coverage report:**
+```bash
+pip install pytest-cov
+python -m pytest tests/ --cov=hn_intel --cov-report=html
+```
+
+---
+
+## Architecture Overview
+
+### Data Flow Diagram
+
+```
+┌─────────────┐
+│ hn-blogs.   │
+│ opml        │  (OPML file with 92 RSS feed URLs)
+└──────┬──────┘
+       │
+       v
+┌─────────────┐
+│ OPML Parser │  (opml_parser.py)
+│             │  Extracts feed URLs from XML
+└──────┬──────┘
+       │
+       v
+┌─────────────┐
+│ RSS Fetcher │  (fetcher.py)
+│             │  HTTP requests, RSS parsing, deduplication
+└──────┬──────┘
+       │
+       v
+┌─────────────┐
+│ SQLite DB   │  (data/hn_intel.db)
+│             │  blogs table + posts table
+│ - blogs     │
+│ - posts     │
+└──────┬──────┘
+       │
+       ├──────────────┬──────────────┬──────────────┐
+       │              │              │              │
+       v              v              v              v
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ Analyzer │   │ Network  │   │ Clusters │   │ Reports  │
+│          │   │          │   │          │   │          │
+│ TF-IDF   │   │ Citation │   │ K-means  │   │ Markdown │
+│ Trends   │   │ PageRank │   │ Cosine   │   │ JSON     │
+└────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘
+     │              │              │              │
+     └──────────────┴──────────────┴──────────────┘
+                            │
+                            v
+                    ┌───────────────┐
+                    │ output/       │
+                    │ - summary.md  │
+                    │ - trends.md   │
+                    │ - trends.json │
+                    │ - network.md  │
+                    │ - network.json│
+                    │ - clusters.md │
+                    │ - clusters.json│
+                    └───────────────┘
+```
+
+### Module Responsibilities
+
+**opml_parser.py**
+Parses OPML XML files to extract RSS feed URLs. OPML is a standard format for sharing lists of feeds. Uses Python's built-in XML parser.
+
+**fetcher.py**
+Downloads RSS feeds via HTTP, parses XML, extracts post metadata, stores in database. Handles timeouts, retries, and duplicate detection (based on post URL).
+
+**db.py**
+Defines SQLite schema (blogs and posts tables), manages database connections, provides convenience functions for queries. SQLite is a serverless database stored in a single file.
+
+**analyzer.py**
+Implements TF-IDF (Term Frequency-Inverse Document Frequency) analysis using scikit-learn. Groups posts by time period, vectorizes text, computes keyword scores, detects accelerating trends.
+
+**network.py**
+Extracts URLs from post content, identifies citations to other blogs in the dataset, builds directed graph using NetworkX, computes PageRank and degree centrality metrics.
+
+**clusters.py**
+Converts blogs to TF-IDF vectors (based on all their posts), applies K-means clustering algorithm (scikit-learn), computes cosine similarity between all blog pairs, generates cluster labels from top keywords.
+
+**reports.py**
+Takes analysis results and generates formatted Markdown and JSON files. Uses tabulate for table formatting. Writes to output directory.
+
+**cli.py**
+Command-line interface using Click library. Defines four commands (fetch, status, analyze, report) with options and help text. Entry point is registered in pyproject.toml.
+
+---
+
+## Key Technologies Explained
+
+### TF-IDF (Term Frequency-Inverse Document Frequency)
+A statistical measure that evaluates how important a word is to a document within a collection. If a word appears frequently in one document but rarely in others, it gets a high TF-IDF score. Used to identify distinctive keywords for each blog or time period. Think of it as a way to filter out common words and highlight technical jargon specific to each blog.
+
+### PageRank
+Algorithm developed by Google to rank web pages. In this project, it ranks blogs based on citation patterns. A blog gets a high PageRank if many other blogs link to it, especially if those citing blogs themselves have high PageRank. It's a recursive definition: being cited by important blogs makes you important. Computed using linear algebra (eigenvector of the adjacency matrix).
+
+### K-means Clustering
+An unsupervised machine learning algorithm that groups data points into K clusters. Works by iteratively assigning points to the nearest cluster center, then recalculating centers. In this project, each blog is a point in high-dimensional space (one dimension per word in vocabulary), and K-means finds natural groupings like "systems programming blogs" vs "web development blogs".
+
+### Cosine Similarity
+Measures how similar two vectors are by computing the cosine of the angle between them. Values range from -1 (opposite) to 1 (identical). In this project, blogs are vectors in TF-IDF space, and cosine similarity quantifies content similarity. Two blogs using similar vocabulary get high similarity scores.
+
+### SQLite
+A lightweight, serverless, file-based relational database. Unlike client-server databases (PostgreSQL, MySQL), SQLite stores everything in a single .db file. No separate server process needed. Great for embedded applications and local data storage. Supports standard SQL queries.
+
+### RSS (Really Simple Syndication)
+An XML format for publishing frequently updated content. Each RSS feed is an XML file listing recent blog posts with titles, links, content, and timestamps. Blogs publish RSS feeds so readers can subscribe and get automatic updates. Think of it as a standardized API for blog content.
+
+### OPML (Outline Processor Markup Language)
+An XML format for sharing lists of RSS feeds. Podcast apps and feed readers use OPML to import/export subscriptions. In this project, `docs/hn-blogs.opml` is a curated list of 92 tech blog RSS URLs popular on Hacker News.
+
+---
+
+## Troubleshooting
+
+### Problem: `pip: command not found`
+
+**Cause:** pip is not installed or not in PATH.
+
+**Solution:**
+- Verify Python installation: `python --version`
+- Try `python -m pip --version` (uses Python to run pip module)
+- Reinstall Python with "Add to PATH" checked
+- On Linux: `sudo apt install python3-pip` or `sudo yum install python3-pip`
+
+### Problem: `ModuleNotFoundError: No module named 'hn_intel'`
+
+**Cause:** Virtual environment is not activated, or package not installed.
+
+**Solution:**
+1. Activate virtual environment:
+   - Windows: `.venv\Scripts\activate`
+   - macOS/Linux: `source .venv/bin/activate`
+2. Reinstall package: `pip install -e ".[dev]"`
+3. Verify: `pip show hn-intel`
+
+### Problem: `hn-intel: command not found`
+
+**Cause:** Virtual environment not activated, or package not installed.
+
+**Solution:**
+1. Activate virtual environment (you should see `(.venv)` in prompt)
+2. Run `pip install -e ".[dev]"`
+3. Verify: `which hn-intel` (macOS/Linux) or `where hn-intel` (Windows)
+
+### Problem: `Feeds errored: 92` (all feeds fail)
+
+**Cause:** Network issue, firewall, or proxy blocking HTTP requests.
+
+**Solution:**
+- Check internet connection
+- Try increasing timeout: `hn-intel fetch --timeout 120`
+- If behind corporate proxy, configure: `export HTTP_PROXY=http://proxy:port`
+- Check firewall settings
+
+### Problem: `New posts: 0` (no posts fetched)
+
+**Cause:** Feeds may have already been fetched (duplicates skipped), or all feeds are empty.
+
+**Solution:**
+- Check database: `hn-intel status`
+- Delete database to re-fetch: `rm data/hn_intel.db` (macOS/Linux) or `del data\hn_intel.db` (Windows)
+- Verify OPML file exists: `cat docs/hn-blogs.opml` (macOS/Linux) or `type docs\hn-blogs.opml` (Windows)
+
+### Problem: `requests.exceptions.ReadTimeout`
+
+**Cause:** Slow network or unresponsive feed server.
+
+**Solution:**
+- Increase timeout: `hn-intel fetch --timeout 60`
+- Increase delay between requests: `hn-intel fetch --delay 2.0`
+- This is normal for some feeds; others will succeed
+
+### Problem: `Error: No such command "analyze"`
+
+**Cause:** Package installed incorrectly or outdated installation.
+
+**Solution:**
+1. Reinstall: `pip uninstall hn-intel && pip install -e ".[dev]"`
+2. Verify version: `pip show hn-intel`
+3. Check entry point: `cat pyproject.toml` and look for `[project.scripts]`
+
+### Problem: `sqlite3.OperationalError: database is locked`
+
+**Cause:** Another process is accessing the database.
+
+**Solution:**
+- Close other terminals running `hn-intel` commands
+- On Unix: `fuser data/hn_intel.db` to find process IDs
+- Restart terminal if issue persists
+
+### Problem: Tests fail with import errors
+
+**Cause:** Virtual environment not activated or dev dependencies not installed.
+
+**Solution:**
+1. Activate virtual environment
+2. Install with dev dependencies: `pip install -e ".[dev]"`
+3. Verify pytest installed: `pytest --version`
+
+---
+
+## License
+
+MIT License
+
+Copyright (c) 2026 HN Blog Intelligence Platform
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please:
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass: `python -m pytest tests/ -v`
+5. Submit a pull request
+
+---
+
+## Support
+
+For issues, questions, or feature requests, please open an issue on the project repository.
