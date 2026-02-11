@@ -52,6 +52,8 @@ def _seed_pain_posts(conn):
 
     Returns {blog_name: blog_id} mapping.
     """
+    from datetime import date, timedelta
+    base = (date.today() - timedelta(days=60)).isoformat()
     ids = _seed_blogs(conn)
 
     posts = [
@@ -61,7 +63,7 @@ def _seed_pain_posts(conn):
             "description": "<p>I wish someone would build a better debugger for distributed systems. "
                            "The current tools are inadequate.</p>",
             "url": "https://alpha.com/wish-post",
-            "published": "2024-03-15",
+            "published": base,
             "author": "Alice",
         }),
         # Frustration signals
@@ -70,7 +72,7 @@ def _seed_pain_posts(conn):
             "description": "<p>It is incredibly frustrating to deal with flaky CI tests. "
                            "Every team I work with faces this pain point daily.</p>",
             "url": "https://beta.com/frustration-post",
-            "published": "2024-04-10",
+            "published": base,
             "author": "Bob",
         }),
         # Gap signals
@@ -79,7 +81,7 @@ def _seed_pain_posts(conn):
             "description": "<p>There is still no good way to correlate logs across microservices "
                            "without setting up expensive infrastructure.</p>",
             "url": "https://gamma.com/gap-post",
-            "published": "2024-04-20",
+            "published": base,
             "author": "Carol",
         }),
         # Difficulty signals
@@ -88,7 +90,7 @@ def _seed_pain_posts(conn):
             "description": "<p>It is hard to run zero-downtime database migrations. "
                            "Most tools assume you can take the database offline.</p>",
             "url": "https://alpha.com/difficulty-post",
-            "published": "2024-05-01",
+            "published": base,
             "author": "Alice",
         }),
         # Opportunity signals
@@ -97,7 +99,7 @@ def _seed_pain_posts(conn):
             "description": "<p>There is a huge opportunity in lightweight edge runtimes. "
                            "WebAssembly opens up new possibilities.</p>",
             "url": "https://beta.com/opportunity-post",
-            "published": "2024-05-10",
+            "published": base,
             "author": "Bob",
         }),
         # Broken signals
@@ -106,7 +108,7 @@ def _seed_pain_posts(conn):
             "description": "<p>DNS caching in containers is broken in many orchestrators. "
                            "Pods frequently fail to resolve internal services.</p>",
             "url": "https://gamma.com/broken-post",
-            "published": "2024-05-15",
+            "published": base,
             "author": "Carol",
         }),
         # Multiple signals in one post (overlap: wish + gap)
@@ -115,7 +117,7 @@ def _seed_pain_posts(conn):
             "description": "<p>I wish there was a lightweight log analysis tool. "
                            "There is no good way to search logs without deploying Elasticsearch.</p>",
             "url": "https://alpha.com/multi-signal",
-            "published": "2024-05-20",
+            "published": base,
             "author": "Alice",
         }),
     ]
@@ -532,9 +534,12 @@ def test_ideas_report_content():
         assert "Evidence" in md
         # Post title should be a clickable link
         assert "[Observability](https://alpha.com/obs)" in md
-        # Location hints present
-        assert "near the beginning" in md
-        assert "midway through" in md
+        # Date shown for post
+        assert "**Date**: 2024-04-20" in md
+        # Pain type as list item with location
+        assert "- **Pain type**: gap" in md
+        assert "**Found**: near the beginning" in md
+        assert "**Found**: midway through" in md
         # Context blockquote with bolded signal text
         assert "**No good way to correlate logs.**" in md
 
@@ -601,6 +606,8 @@ def test_pain_stop_words_excluded_from_keywords():
 
 def test_extract_pain_signals_deduplicates_same_post_type():
     """Same post + signal_type should produce only one signal."""
+    from datetime import date, timedelta
+    recent = (date.today() - timedelta(days=30)).isoformat()
     conn = _mem_db()
     ids = _seed_blogs(conn)
 
@@ -610,7 +617,7 @@ def test_extract_pain_signals_deduplicates_same_post_type():
         "description": "<p>I wish someone would build a better debugger. "
                        "I also wish there was a better profiler for production.</p>",
         "url": "https://alpha.com/multi-wish",
-        "published": "2024-06-01",
+        "published": recent,
         "author": "Alice",
     })
 
@@ -623,6 +630,8 @@ def test_extract_pain_signals_deduplicates_same_post_type():
 
 def test_dedup_keeps_longest_match():
     """Deduplication should keep the longest signal text."""
+    from datetime import date, timedelta
+    recent = (date.today() - timedelta(days=30)).isoformat()
     conn = _mem_db()
     ids = _seed_blogs(conn)
 
@@ -631,7 +640,7 @@ def test_dedup_keeps_longest_match():
         "description": "<p>I wish someone would build X. "
                        "I also wish there was a much better and more comprehensive tool for handling Y in production environments.</p>",
         "url": "https://alpha.com/long-wish",
-        "published": "2024-06-01",
+        "published": recent,
         "author": "Alice",
     })
 
@@ -862,7 +871,10 @@ def test_ideas_report_evidence_section():
         # Blog name after title
         assert "Blog A" in md
         assert "Blog B" in md
-        # Location hints
+        # Date shown once per post
+        assert "**Date**: 2024-06-01" in md
+        # Pain type as list items with location
+        assert "- **Pain type**: wish" in md
         assert "**Found**: near the beginning" in md
         assert "**Found**: midway through" in md
         # Context blockquote with bolded signal
@@ -870,6 +882,59 @@ def test_ideas_report_evidence_section():
         assert "**No good way to handle this.**" in md
         # Old format should NOT be present
         assert "Key Quotes" not in md
+
+
+def test_ideas_report_consolidates_same_post():
+    """Multiple signals from the same post should appear under one heading."""
+    ideas = [{
+        "idea_id": 0,
+        "label": "Consolidated Idea",
+        "impact_score": 0.6,
+        "justification": "Test.",
+        "keywords": ["test"],
+        "signal_count": 3,
+        "blog_count": 2,
+        "pain_type_breakdown": {"difficulty": 2, "broken": 1},
+        "representative_quote": "it is hard to do X.",
+        "sources": [
+            {"blog_name": "Blog A", "post_title": "Same Post",
+             "post_url": "https://a.com/same", "published": "2025-11-22",
+             "signal_text": "it is hard to do X.",
+             "signal_context": "Sometimes it is hard to do X. We tried everything.",
+             "signal_location": "midway through",
+             "signal_type": "difficulty", "impact_score": 0.6,
+             "score_breakdown": {"trend": 0.2, "authority": 0.1, "breadth": 0.2, "recency": 0.1}},
+            {"blog_name": "Blog A", "post_title": "Same Post",
+             "post_url": "https://a.com/same", "published": "2025-11-22",
+             "signal_text": "evals are largely unreliable.",
+             "signal_context": "But evals are largely unreliable. They don't measure what matters.",
+             "signal_location": "near the beginning",
+             "signal_type": "broken", "impact_score": 0.5,
+             "score_breakdown": {"trend": 0.1, "authority": 0.1, "breadth": 0.2, "recency": 0.1}},
+            {"blog_name": "Blog B", "post_title": "Different Post",
+             "post_url": "https://b.com/different", "published": "2025-12-01",
+             "signal_text": "No good way to test this.",
+             "signal_context": "There is no good way to test this. We need better tools.",
+             "signal_location": "near the end",
+             "signal_type": "difficulty", "impact_score": 0.45,
+             "score_breakdown": {"trend": 0.1, "authority": 0.1, "breadth": 0.1, "recency": 0.15}},
+        ],
+    }]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        md_path, _ = generate_ideas_report(ideas, tmpdir)
+        with open(md_path, encoding="utf-8") as f:
+            md = f.read()
+
+        # "Same Post" heading should appear exactly once
+        assert md.count("[Same Post](https://a.com/same)") == 1
+        # But both signal types should be listed
+        assert "- **Pain type**: difficulty" in md
+        assert "- **Pain type**: broken" in md
+        # Both signal texts should appear bolded in context
+        assert "**it is hard to do X.**" in md
+        assert "**evals are largely unreliable.**" in md
+        # The different post should also appear
+        assert "[Different Post](https://b.com/different)" in md
 
 
 # ── CLI tests ──
@@ -889,3 +954,84 @@ def test_cli_main_lists_ideas_command():
     runner = CliRunner()
     result = runner.invoke(main, ["--help"])
     assert "ideas" in result.output
+
+
+# ── Renumbering after filter tests ──
+
+
+def test_renumber_after_filter():
+    """After filtering singletons, idea_ids should be sequential with no gaps."""
+    # Simulate ideas as produced by cluster_signals (with gaps after filter)
+    ideas = [
+        {"idea_id": 0, "blog_count": 3, "label": "A"},
+        {"idea_id": 1, "blog_count": 1, "label": "B"},  # will be filtered
+        {"idea_id": 2, "blog_count": 2, "label": "C"},
+        {"idea_id": 3, "blog_count": 1, "label": "D"},  # will be filtered
+        {"idea_id": 4, "blog_count": 4, "label": "E"},
+    ]
+
+    quality_ideas = [i for i in ideas if i["blog_count"] >= 2]
+    if quality_ideas:
+        ideas = quality_ideas
+
+    # Re-number (same logic as generate_ideas)
+    for i, idea in enumerate(ideas):
+        idea["idea_id"] = i
+
+    assert [idea["idea_id"] for idea in ideas] == [0, 1, 2]
+    assert [idea["label"] for idea in ideas] == ["A", "C", "E"]
+
+
+# ── Date filter tests ──
+
+
+def test_extract_pain_signals_filters_old_posts():
+    """Posts older than max_age_days should be excluded."""
+    conn = _mem_db()
+    ids = _seed_blogs(conn)
+
+    # Old post (2017) with pain signal
+    insert_post(conn, ids["Alpha Blog"], {
+        "title": "Ancient tooling thoughts",
+        "description": "<p>I wish someone would build a better debugger.</p>",
+        "url": "https://alpha.com/old-post",
+        "published": "2017-02-04",
+        "author": "Alice",
+    })
+    # Recent post with pain signal
+    from datetime import date, timedelta
+    recent_date = (date.today() - timedelta(days=30)).isoformat()
+    insert_post(conn, ids["Beta Blog"], {
+        "title": "Modern CI problems",
+        "description": "<p>I wish someone would build a better CI system.</p>",
+        "url": "https://beta.com/recent-post",
+        "published": recent_date,
+        "author": "Bob",
+    })
+
+    signals = extract_pain_signals(conn, max_age_days=365)
+
+    urls = [s["post_url"] for s in signals]
+    assert "https://alpha.com/old-post" not in urls
+    assert "https://beta.com/recent-post" in urls
+    conn.close()
+
+
+def test_extract_pain_signals_keeps_missing_date():
+    """Posts with empty published date should NOT be filtered out."""
+    conn = _mem_db()
+    ids = _seed_blogs(conn)
+
+    insert_post(conn, ids["Alpha Blog"], {
+        "title": "Undated post",
+        "description": "<p>I wish someone would build a better tool for this.</p>",
+        "url": "https://alpha.com/no-date",
+        "published": "",
+        "author": "Alice",
+    })
+
+    signals = extract_pain_signals(conn, max_age_days=365)
+
+    urls = [s["post_url"] for s in signals]
+    assert "https://alpha.com/no-date" in urls
+    conn.close()

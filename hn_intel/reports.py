@@ -330,6 +330,21 @@ def generate_cluster_report(cluster_results, similarity_matrix, blog_names, outp
     return md_path, json_path
 
 
+def _group_sources_by_post(sources):
+    """Group sources by post_url, preserving order of first appearance.
+
+    Returns list of (post_url, [sources]) tuples.
+    """
+    from collections import OrderedDict
+    groups = OrderedDict()
+    for s in sources:
+        url = s["post_url"]
+        if url not in groups:
+            groups[url] = []
+        groups[url].append(s)
+    return list(groups.items())
+
+
 def generate_ideas_report(ideas, output_dir):
     """Generate project ideas report in Markdown and JSON.
 
@@ -368,32 +383,42 @@ def generate_ideas_report(ideas, output_dir):
                 lines.append("")
 
             # Evidence section (replaces old Sources table + Key Quotes)
+            # Group sources by post_url so the same post isn't repeated
             sources = idea.get("sources", [])
             if sources:
                 lines.append("### Evidence\n")
-                for s in sources[:5]:
-                    post_date = s["published"][:10] if s["published"] else "N/A"
-                    location = s.get("signal_location", "")
+                grouped = _group_sources_by_post(sources[:8])
+                shown = 0
+                for post_url, group in grouped:
+                    if shown >= 5:
+                        break
+                    first = group[0]
+                    post_date = first["published"][:10] if first["published"] else "N/A"
                     lines.append(
-                        f"#### [{s['post_title']}]({s['post_url']}) — {s['blog_name']}"
+                        f"#### [{first['post_title']}]({post_url}) — {first['blog_name']}"
                     )
-                    location_part = f" | **Found**: {location}" if location else ""
-                    lines.append(
-                        f"**Pain type**: {s['signal_type']} "
-                        f"| **Date**: {post_date}"
-                        f"{location_part}"
-                    )
+                    lines.append(f"**Date**: {post_date}")
                     lines.append("")
 
-                    # Context blockquote with the signal sentence bolded
-                    context = s.get("signal_context", "")
-                    signal_text = s.get("signal_text", "")
-                    if context and signal_text:
-                        bolded = context.replace(signal_text, f"**{signal_text}**")
-                        lines.append(f"> {bolded}")
-                    elif signal_text:
-                        lines.append(f"> **{signal_text}**")
-                    lines.append("")
+                    for s in group:
+                        location = s.get("signal_location", "")
+                        location_part = f" | **Found**: {location}" if location else ""
+                        lines.append(
+                            f"- **Pain type**: {s['signal_type']}"
+                            f"{location_part}"
+                        )
+
+                        # Context blockquote with the signal sentence bolded
+                        context = s.get("signal_context", "")
+                        signal_text = s.get("signal_text", "")
+                        if context and signal_text:
+                            bolded = context.replace(signal_text, f"**{signal_text}**")
+                            lines.append(f"  > {bolded}")
+                        elif signal_text:
+                            lines.append(f"  > **{signal_text}**")
+                        lines.append("")
+
+                    shown += 1
 
                 lines.append("")
 

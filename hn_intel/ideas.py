@@ -4,7 +4,7 @@ import html
 import math
 import re
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -163,13 +163,15 @@ def _compute_location_hint(match_start, title_len, text_len):
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def extract_pain_signals(conn):
+def extract_pain_signals(conn, max_age_days=365):
     """Scan all posts for pain-point language and return structured signals.
 
     Each signal includes full back-pointer data to the source blog and post.
 
     Args:
         conn: sqlite3.Connection instance.
+        max_age_days: Skip posts older than this many days. Posts with
+            missing or unparseable dates are kept (conservative).
 
     Returns:
         List of dicts, each with keys: post_id, blog_id, blog_name,
@@ -181,7 +183,19 @@ def extract_pain_signals(conn):
     # Track (post_url, signal_type) → longest signal_text to deduplicate
     seen = {}
 
+    today = date.today()
+    cutoff = today - timedelta(days=max_age_days)
+
     for post in posts:
+        # Skip posts older than cutoff
+        pub = post["published"] or ""
+        if pub:
+            try:
+                pub_date = date.fromisoformat(pub[:10])
+                if pub_date < cutoff:
+                    continue
+            except (ValueError, IndexError):
+                pass  # keep posts with unparseable dates
         title = post["title"] or ""
         description = _strip_html(post["description"])
         full_text = title + ". " + description
@@ -638,7 +652,7 @@ def _make_idea(idea_id, members, feature_names, indices, matrix=None):
     }
 
 
-def generate_ideas(conn, max_features=500, period="month", top_n=20):
+def generate_ideas(conn, max_features=500, period="month", top_n=20, max_age_days=365):
     """Orchestrate the full ideas pipeline.
 
     1. Extract pain signals from posts
@@ -650,6 +664,7 @@ def generate_ideas(conn, max_features=500, period="month", top_n=20):
         max_features: Max TF-IDF features for trend analysis.
         period: 'month' or 'week' for trend bucketing.
         top_n: Maximum number of ideas to return.
+        max_age_days: Skip posts older than this many days.
 
     Returns:
         List of idea dicts sorted by impact_score descending.
@@ -658,7 +673,7 @@ def generate_ideas(conn, max_features=500, period="month", top_n=20):
     from hn_intel.network import extract_citations, build_citation_graph, compute_centrality
 
     # Step 1: extract pain signals
-    signals = extract_pain_signals(conn)
+    signals = extract_pain_signals(conn, max_age_days=max_age_days)
     if not signals:
         return []
 
@@ -683,5 +698,9 @@ def generate_ideas(conn, max_features=500, period="month", top_n=20):
     quality_ideas = [i for i in ideas if i["blog_count"] >= 2]
     if quality_ideas:
         ideas = quality_ideas
+
+    # Re-number after filtering to avoid gaps
+    for i, idea in enumerate(ideas):
+        idea["idea_id"] = i
 
     return ideas[:top_n]
