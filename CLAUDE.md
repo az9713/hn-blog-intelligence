@@ -11,6 +11,7 @@ This file provides comprehensive guidance for Claude Code (AI assistant) when wo
 - Analyzes content using TF-IDF to identify trends and emerging topics
 - Builds citation networks between blogs using NetworkX
 - Clusters similar blogs based on content similarity
+- Surfaces high-impact project ideas from blog pain signals (wishes, frustrations, gaps, difficulties)
 - Generates comprehensive reports in Markdown and JSON formats
 
 **Core Technologies**: Python 3.10+, SQLite, scikit-learn, NetworkX, feedparser, Click
@@ -27,14 +28,16 @@ pip install -e ".[dev]"       # Install in editable mode with dev dependencies
 hn-intel fetch                # Fetch RSS feeds and store in SQLite
 hn-intel status               # Show database statistics
 hn-intel analyze              # Run full analysis pipeline (trends, citations, clusters)
+hn-intel ideas                # Surface project ideas from blog pain signals
 hn-intel report               # Generate reports to output/ directory
 
 # Testing
-python -m pytest tests/ -v    # Run all 73 tests with verbose output
+python -m pytest tests/ -v    # Run all 97 tests with verbose output
 
 # CLI options
 hn-intel fetch --opml docs/hn-blogs.opml --timeout 30 --delay 0.5
 hn-intel analyze --max-features 500 --n-clusters 8 --period month
+hn-intel ideas --top-n 20 --output-dir output
 hn-intel report --output-dir output --max-features 500 --n-clusters 8
 ```
 
@@ -47,21 +50,23 @@ C:\Users\simon\Downloads\hn_popular_blogs_bestpartnerstv\
 │
 ├── hn_intel/                 # Main package
 │   ├── __init__.py           # Empty package initializer
-│   ├── cli.py                # Click CLI with 4 commands (fetch, status, analyze, report)
+│   ├── cli.py                # Click CLI with 5 commands (fetch, status, analyze, ideas, report)
 │   ├── opml_parser.py        # Parse OPML XML to extract feed URLs
 │   ├── db.py                 # SQLite connection, schema, and query helpers
 │   ├── fetcher.py            # RSS feed fetching with requests + feedparser
 │   ├── analyzer.py           # TF-IDF keyword extraction and trend detection
+│   ├── ideas.py              # Pain signal extraction, scoring, and project idea generation
 │   ├── network.py            # Citation extraction and NetworkX graph analysis
 │   ├── clusters.py           # Blog clustering using K-means
-│   └── reports.py            # Report generation (Markdown + JSON)
+│   └── reports.py            # Report generation (Markdown + JSON, including ideas)
 │
-├── tests/                    # Test suite (73 tests)
+├── tests/                    # Test suite (97 tests)
 │   ├── __init__.py
 │   ├── test_opml_parser.py
 │   ├── test_db.py
 │   ├── test_fetcher.py
 │   ├── test_analyzer.py
+│   ├── test_ideas.py
 │   ├── test_network.py
 │   ├── test_clusters.py
 │   └── test_reports.py
@@ -73,10 +78,11 @@ C:\Users\simon\Downloads\hn_popular_blogs_bestpartnerstv\
 │   └── hn_intel.db           # Created on first run
 │
 ├── output/                   # Generated reports (gitignored)
-│   ├── trends.md
-│   ├── emerging_topics.json
-│   ├── citation_network.md
-│   └── blog_clusters.md
+│   ├── summary.md
+│   ├── trends.md / trends.json
+│   ├── network.md / network.json
+│   ├── clusters.md / clusters.json
+│   └── ideas.md / ideas.json
 │
 └── pyproject.toml            # Python packaging configuration
 ```
@@ -97,6 +103,7 @@ SQLite DB (3 tables: blogs, posts, citations)
 analyzer.compute_trends() → TF-IDF trends by month/week
 network.extract_citations() → Parse HTML links → citations table
 clusters.compute_blog_vectors() → TF-IDF vectors → K-means clustering
+ideas.generate_ideas() → Pain signals → scored & clustered project ideas
   ↓
 reports.generate_all_reports() → Markdown + JSON files in output/
 ```
@@ -180,9 +187,10 @@ for row in rows:
 
 ### HTML Processing
 ```python
-# Two identical strip_html() implementations exist in:
+# Three identical strip_html() / _strip_html() implementations exist in:
 # - analyzer.py
 # - clusters.py
+# - ideas.py
 
 def strip_html(text):
     """Remove HTML tags and decode entities."""
@@ -264,7 +272,8 @@ else:
 - `fetch`: Parse OPML, fetch feeds, store in DB
 - `status`: Show DB statistics (blog count, post count, last fetch time)
 - `analyze`: Run full analysis pipeline, print summary
-- `report`: Run analysis and generate reports to output/
+- `ideas`: Surface project ideas from blog pain signals (optional `--output-dir` for reports)
+- `report`: Run analysis, generate ideas, and generate all reports to output/
 
 **Pattern**: All commands call `get_connection()` and `init_db(conn)` first.
 
@@ -327,12 +336,30 @@ else:
 
 **Returns**: List of dicts with cluster assignments, keywords, and member blogs.
 
+### `ideas.py` - Project Idea Generation
+**Main functions**:
+- `extract_pain_signals(conn)` - Scan all posts for pain-point language (wishes, frustrations, gaps, difficulties, broken, opportunity)
+- `extract_signal_keywords(signals, max_features=200)` - TF-IDF on signal texts for clustering
+- `score_ideas(signals, emerging, centrality)` - Composite impact scoring (trend 0.35, authority 0.25, breadth 0.25, recency 0.15)
+- `build_justification(idea)` - Generate written justification for a project idea
+- `cluster_signals(signals, vectorizer, matrix)` - Group related signals into idea themes using agglomerative clustering
+- `generate_ideas(conn, max_features, period, top_n)` - Orchestrate full ideas pipeline
+
+**Pain signal types**: wish, frustration, gap, difficulty, broken, opportunity
+
+**Scoring weights**: trend momentum (0.35), authority/PageRank (0.25), breadth across blogs (0.25), recency (0.15)
+
+**Returns**: List of idea dicts with: idea_id, label, impact_score, justification, keywords, signal_count, blog_count, pain_type_breakdown, representative_quote, sources.
+
 ### `reports.py` - Report Generation
-**Main function**: `generate_all_reports(...)` - Writes 4 files to output_dir:
-1. `trends.md` - Keyword trends over time (Markdown table)
-2. `emerging_topics.json` - List of emerging topics with acceleration scores
-3. `citation_network.md` - PageRank, top citing/cited blogs
-4. `blog_clusters.md` - Cluster assignments with keywords
+**Main function**: `generate_all_reports(...)` - Writes up to 9 files to output_dir:
+1. `summary.md` - High-level summary including top project ideas
+2. `trends.md` / `trends.json` - Keyword trends over time
+3. `network.md` / `network.json` - PageRank, top citing/cited blogs
+4. `clusters.md` / `clusters.json` - Cluster assignments with keywords
+5. `ideas.md` / `ideas.json` - Ranked project ideas with justifications and sources
+
+**Additional function**: `generate_ideas_report(ideas, output_dir)` - Standalone ideas report generation
 
 **Pattern**: Creates output directory if it doesn't exist (`os.makedirs(output_dir, exist_ok=True)`).
 
@@ -348,6 +375,7 @@ Each module has a corresponding test file:
 - `test_db.py` - Tests database schema and query helpers
 - `test_fetcher.py` - Mocks HTTP requests to test feed fetching
 - `test_analyzer.py` - Tests TF-IDF and trend detection
+- `test_ideas.py` - Tests pain signal extraction, scoring, clustering, idea generation, CLI integration
 - `test_network.py` - Tests citation extraction and PageRank
 - `test_clusters.py` - Tests blog clustering
 - `test_reports.py` - Tests report generation
@@ -364,7 +392,7 @@ python -m pytest tests/test_analyzer.py -v
 python -m pytest tests/test_analyzer.py::test_compute_trends -v
 ```
 
-**Test count**: 73 tests total (as of last check).
+**Test count**: 97 tests total (as of last check).
 
 ---
 
@@ -443,7 +471,7 @@ python -m pytest tests/test_analyzer.py::test_compute_trends -v
 - K-means clustering complexity: O(n_posts × n_features × n_clusters × n_iterations)
 
 ### Known Patterns
-- `strip_html()` exists in two places (analyzer.py, clusters.py) - intentional duplication
+- `strip_html()` / `_strip_html()` exists in three places (analyzer.py, clusters.py, ideas.py) - intentional duplication
 - CLI uses lazy imports to speed up command invocation
 - Database connection is opened/closed per CLI command (no persistent connection)
 - All dates are stored as ISO strings, not as SQLite DATE type
@@ -491,6 +519,7 @@ hn-intel report
 cat output/trends.md
 cat output/citation_network.md
 cat output/blog_clusters.md
+cat output/ideas.md
 ```
 
 ### Development Workflow
@@ -533,7 +562,7 @@ hn-intel analyze
 
 - **Python**: 3.10+
 - **Package version**: 0.1.0
-- **Test count**: 73 tests
+- **Test count**: 97 tests
 - **Database version**: No migrations yet (schema v1)
 
 ---

@@ -186,14 +186,14 @@ hn-intel status
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                    CLI Layer (cli.py)                      │
-│  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌────────┐        │
-│  │  fetch   │ │ status  │ │ analyze  │ │ report │        │
-│  └────┬─────┘ └────┬────┘ └────┬─────┘ └───┬────┘        │
-│       │            │           │            │             │
-│  ┌────▼─────┐ ┌────▼────┐ ┌───▼────────────▼──────┐      │
-│  │ fetcher  │ │   db    │ │  analyzer  network     │      │
-│  │          │ │         │ │  clusters  reports     │      │
-│  └────┬─────┘ └────┬────┘ └───────────┬───────────┘      │
+│  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌───────┐ ┌────────┐│
+│  │  fetch   │ │ status  │ │ analyze  │ │ ideas │ │ report ││
+│  └────┬─────┘ └────┬────┘ └────┬─────┘ └──┬────┘ └───┬────┘│
+│       │            │           │           │          │     │
+│  ┌────▼─────┐ ┌────▼────┐ ┌───▼───────────▼──────────▼┐    │
+│  │ fetcher  │ │   db    │ │  analyzer  network  ideas  │    │
+│  │          │ │         │ │  clusters  reports          │    │
+│  └────┬─────┘ └────┬────┘ └──────────────┬─────────────┘    │
 │       │            │                   │                  │
 │  ┌────▼────┐  ┌────▼─────────────────▼────┐              │
 │  │  opml   │  │     SQLite Database        │              │
@@ -1003,9 +1003,90 @@ def cluster_blogs(blog_vectors, blog_names, vectorizer, n_clusters=8):
 
 ---
 
-### 2.8 Module: `reports.py`
+### 2.8 Module: `ideas.py`
 
-**Purpose**: Generate Markdown and JSON reports from analysis results.
+**Purpose**: Mine blog content for pain signals and surface high-impact project ideas.
+
+**What is a pain signal?**
+When a blogger writes "I wish there was a better tool for..." or "it's frustratingly hard to...", that's a pain signal — an explicit expression of an unmet need. This module detects six categories of pain language using regex patterns.
+
+**Key Dependencies**:
+- `scikit-learn`: TF-IDF vectorization and agglomerative clustering
+- `hn_intel.analyzer`: Emerging topic detection (for trend scoring)
+- `hn_intel.network`: Citation graph (for authority/PageRank scoring)
+
+---
+
+#### Pain Signal Categories
+
+```python
+_PAIN_PATTERNS = {
+    "wish": re.compile(r"(?:i wish|would be nice|if only|someone should build|...)"),
+    "frustration": re.compile(r"(?:frustrat\w*|annoy\w*|pain point|drives me crazy|...)"),
+    "gap": re.compile(r"(?:no good (?:way|tool|solution)|missing|lacking|...)"),
+    "difficulty": re.compile(r"(?:hard to|difficult to|impossible to|struggle with|...)"),
+    "broken": re.compile(r"(?:broken|doesn't work|unreliable|flaky|buggy|...)"),
+    "opportunity": re.compile(r"(?:opportunity|untapped|need for|demand for|...)"),
+}
+```
+
+Each pattern matches common English phrases that indicate an unmet need or frustration.
+
+---
+
+#### Composite Impact Scoring
+
+Each pain signal is scored on four dimensions:
+
+| Dimension | Weight | Source | Meaning |
+|-----------|--------|--------|---------|
+| **Trend** | 0.35 | Emerging topics | Does this signal relate to an accelerating keyword? |
+| **Authority** | 0.25 | PageRank | Is the source blog influential? |
+| **Breadth** | 0.25 | Blog count | How many distinct blogs express this pain? |
+| **Recency** | 0.15 | Published date | How recent is the signal? (exponential decay) |
+
+```python
+impact_score = 0.35 * trend + 0.25 * authority + 0.25 * breadth + 0.15 * recency
+```
+
+---
+
+#### Agglomerative Clustering
+
+Related pain signals are grouped into coherent project idea themes using **agglomerative clustering** (not K-means).
+
+**Why agglomerative, not K-means?**
+- No need to specify K in advance (uses distance threshold instead)
+- Works with precomputed cosine distance matrices
+- Better for small, variable-sized clusters (pain signals may form many small groups)
+
+```python
+clustering = AgglomerativeClustering(
+    n_clusters=None,                    # Auto-determine cluster count
+    distance_threshold=1.0 - 0.3,      # Cosine similarity threshold of 0.3
+    metric="precomputed",               # Use precomputed distance matrix
+    linkage="average",                  # Average linkage for balanced clusters
+)
+```
+
+---
+
+#### Key Functions
+
+| Function | Purpose | Returns |
+|----------|---------|---------|
+| `extract_pain_signals(conn)` | Scan posts for pain language | List of signal dicts with back-pointers |
+| `extract_signal_keywords(signals)` | TF-IDF on signal texts | (vectorizer, matrix) tuple |
+| `score_ideas(signals, emerging, centrality)` | Composite scoring | Signals with `impact_score` added |
+| `build_justification(idea)` | Written explanation | Multi-sentence string |
+| `cluster_signals(signals, vectorizer, matrix)` | Group into ideas | List of idea dicts |
+| `generate_ideas(conn, ...)` | Full pipeline | List of ranked idea dicts |
+
+---
+
+### 2.9 Module: `reports.py`
+
+**Purpose**: Generate Markdown and JSON reports from analysis results, including project ideas reports.
 
 **Key Dependency**: `tabulate` - formats data into ASCII/Markdown tables (like Java's TextTable or Apache Commons Lang3's `TableFormatter`).
 
@@ -1042,18 +1123,19 @@ print(tabulate(data, headers=["Language", "Posts", "Score"], tablefmt="github"))
 
 | Function | Outputs | Description |
 |----------|---------|-------------|
-| `generate_summary_report()` | `summary.md` | Overview: dataset stats, top topics, top blogs, cluster summary |
+| `generate_summary_report()` | `summary.md` | Overview: dataset stats, top topics, top blogs, cluster summary, top ideas |
 | `generate_trend_report()` | `trends.md`, `trends.json` | Emerging topics with acceleration, period summary |
 | `generate_network_report()` | `network.md`, `network.json` | Graph stats, top blogs by PageRank and betweenness |
 | `generate_cluster_report()` | `clusters.md`, `clusters.json` | Cluster assignments, similar blog pairs |
-| `generate_all_reports()` | All of the above | Convenience function to generate all reports |
+| `generate_ideas_report()` | `ideas.md`, `ideas.json` | Ranked project ideas with justifications, sources, key quotes |
+| `generate_all_reports()` | All of the above | Convenience function to generate all reports (ideas included if provided) |
 
 **JSON output**: For programmatic consumption (e.g., web dashboard).
 **Markdown output**: For human reading (e.g., GitHub README).
 
 ---
 
-### 2.9 Module: `cli.py`
+### 2.10 Module: `cli.py`
 
 **Purpose**: Command-line interface using Click.
 
@@ -1099,6 +1181,7 @@ hn-intel --help
     fetch    Fetch all RSS feeds and store posts.
     status   Show database status.
     analyze  Run full analysis pipeline.
+    ideas    Surface high-impact project ideas from blog pain signals.
     report   Run analysis and generate all reports.
 
 hn-intel fetch --help

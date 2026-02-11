@@ -27,6 +27,7 @@ The **HN Blog Intelligence Platform** is a command-line tool that analyzes blog 
 - Identifies trending topics across these blogs
 - Discovers which blogs reference each other
 - Groups blogs with similar content together
+- **Surfaces actionable project ideas** from pain points expressed in blog posts
 - Generates easy-to-read reports about what's hot in tech
 
 **What you'll learn:**
@@ -34,6 +35,7 @@ The **HN Blog Intelligence Platform** is a command-line tool that analyzes blog 
 - Which blogs are most influential (most-cited by others)
 - Which blogs write about similar topics (so you can discover new blogs to read)
 - How tech conversations evolve over time
+- **What tools and solutions developers are wishing for** — backed by real blog evidence
 
 **No coding required.** You just type commands and read the reports it generates.
 
@@ -195,7 +197,7 @@ Commands:
 
 ---
 
-## Part 2: Quick Start - 10 Use Cases
+## Part 2: Quick Start - 11 Use Cases
 
 Each use case below teaches you one thing you can do with this tool. Follow them in order.
 
@@ -341,13 +343,14 @@ hn-intel report
 ```
 
 **What happens:**
-This runs the same analysis as `hn-intel analyze`, but instead of just printing a summary, it saves **7 detailed report files** to the `output/` folder.
+This runs the same analysis as `hn-intel analyze`, plus surfaces project ideas from pain signals, then saves **9 detailed report files** to the `output/` folder.
 
 This takes **30-60 seconds**.
 
 **What you'll see:**
 ```
 Running analysis...
+Surfacing project ideas...
 Generating reports...
 
 Reports written to output/:
@@ -358,10 +361,12 @@ Reports written to output/:
   output/network.json
   output/clusters.md
   output/clusters.json
+  output/ideas.md
+  output/ideas.json
 ```
 
 **What this means:**
-Seven files were created in the `output/` folder:
+Nine files were created in the `output/` folder:
 - `.md` files are Markdown (human-readable text files)
 - `.json` files are JSON (machine-readable data files)
 
@@ -589,7 +594,60 @@ The tool used **TF-IDF** (Term Frequency-Inverse Document Frequency) to identify
 
 ---
 
-### Use Case 9: Analyze trends by week instead of month
+### Use Case 9: Discover project ideas from blog pain signals
+
+**What you'll learn:** How to surface actionable project ideas from what bloggers wish existed
+
+**Command:**
+```bash
+hn-intel ideas
+```
+
+**What happens:**
+The tool scans all blog posts for "pain-point language" — phrases where bloggers express wishes, frustrations, gaps, or difficulties. It then scores each signal by trend momentum, blog authority, breadth across blogs, and recency, and clusters related signals into coherent project idea themes.
+
+This takes **30-60 seconds**.
+
+**What you'll see:**
+```
+Surfacing project ideas...
+Found 15 project ideas:
+
+  1. Wasm, Tools, Developer, Debugging, Profiling
+     Impact: 0.72 | Blogs: 4 | Signals: 7
+     "I wish there was a decent WASM profiler that actually works..."
+     Sources: simonwillison.net, xeiaso.net, fasterthanli.me, matklad.github.io
+
+  2. Api, Testing, Documentation, Workflow
+     Impact: 0.65 | Blogs: 3 | Signals: 5
+     "It's frustratingly hard to test APIs when documentation is outdated..."
+     Sources: blog.codinghorror.com, antirez.com, lucumr.pocoo.org
+
+  ...
+```
+
+**What this means:**
+- **Impact score (0 to 1):** Higher = stronger signal. Combines trend momentum, blog authority, breadth, and recency.
+- **Blogs:** How many distinct blogs expressed this pain point. More blogs = more validation.
+- **Signals:** Total number of pain expressions found for this idea.
+- **Quote:** A representative sentence from a blog post.
+- **Sources:** The blogs that contributed to this idea.
+
+**What just happened?**
+The tool used regular expressions to find pain-point phrases (e.g., "I wish", "hard to", "no good tool for"), then used TF-IDF and agglomerative clustering to group related complaints into coherent project ideas. Each idea is ranked by how well it aligns with emerging trends and influential blogs.
+
+**Save results to files:**
+```bash
+hn-intel ideas --output-dir output
+```
+This generates `output/ideas.md` and `output/ideas.json`.
+
+**View the detailed report:**
+Open `output/ideas.md` for justifications, source attribution, and key quotes for each idea.
+
+---
+
+### Use Case 10: Analyze trends by week instead of month
 
 **What you'll learn:** How to adjust the time granularity of trend analysis
 
@@ -624,7 +682,7 @@ Instead of grouping posts by month (January, February, etc.), the tool grouped t
 
 ---
 
-### Use Case 10: Update your data with fresh posts
+### Use Case 11: Update your data with fresh posts
 
 **What you'll learn:** How to keep your data current
 
@@ -663,7 +721,7 @@ The tool fetched all RSS feeds again, but only added *new* posts. It detected du
 
 ## Part 3: Understanding the Output Files
 
-When you run `hn-intel report`, you get 7 files. Here's what each one contains.
+When you run `hn-intel report`, you get 9 files. Here's what each one contains.
 
 ---
 
@@ -714,6 +772,15 @@ When you run `hn-intel report`, you get 7 files. Here's what each one contains.
 ```
 
 **What it tells you:** How blogs are grouped by topic.
+
+#### 5. Top Project Ideas
+```markdown
+|   Rank | Idea                               |   Impact |   Blogs |   Signals |
+|--------|------------------------------------|----------|---------|-----------|
+|      1 | Wasm, Tools, Developer, Debugging  |     0.72 |       4 |         7 |
+```
+
+**What it tells you:** The highest-impact project opportunities based on pain signals from blog content. Higher impact = stronger signal combining trends, authority, breadth, and recency.
 
 ---
 
@@ -876,6 +943,76 @@ Machine-readable data:
 
 ---
 
+### ideas.md / ideas.json - Project idea details
+
+**What it is:** Ranked project ideas derived from pain signals in blog content
+
+**Markdown (.md) version:**
+```markdown
+## 1. Wasm, Tools, Developer, Debugging, Profiling
+**Impact Score**: 0.72 | **Blogs**: 4 | **Signals**: 7
+
+### Justification
+
+4 blogs independently describe this pain point, including simonwillison.net,
+xeiaso.net, fasterthanli.me. Pain signals span 3 frustration, 2 gap, 2 wish
+categories. Related emerging keywords: wasm, tools, debugging. High composite
+impact score suggests strong unmet demand.
+
+### Sources
+
+| Blog                          | Post              | Date       | Pain Type   |
+|-------------------------------|-------------------|------------|-------------|
+| [simonwillison.net](url)      | WASM Pain Points  | 2026-01-15 | frustration |
+| [xeiaso.net](url)             | Tools We Need     | 2026-01-20 | wish        |
+
+### Key Quotes
+
+> "I wish there was a decent WASM profiler that actually works" — **simonwillison.net**
+```
+
+**JSON (.json) version:**
+```json
+{
+  "ideas": [
+    {
+      "idea_id": 0,
+      "label": "wasm, tools, developer, debugging, profiling",
+      "impact_score": 0.72,
+      "justification": "4 blogs independently describe this pain point...",
+      "keywords": ["wasm", "tools", "developer"],
+      "signal_count": 7,
+      "blog_count": 4,
+      "pain_type_breakdown": {"frustration": 3, "gap": 2, "wish": 2},
+      "representative_quote": "I wish there was a decent WASM profiler...",
+      "sources": [...]
+    }
+  ]
+}
+```
+
+**Key concepts explained:**
+
+**Impact Score (0 to 1):** A composite score combining:
+- **Trend momentum (35%)**: Does this pain relate to an accelerating topic?
+- **Authority (25%)**: Is the source blog influential (high PageRank)?
+- **Breadth (25%)**: How many distinct blogs express this pain?
+- **Recency (15%)**: How recently was this pain expressed?
+
+**Pain types:** The tool detects six categories:
+- **Wish**: "I wish there was...", "someone should build..."
+- **Frustration**: "frustrating", "drives me crazy"
+- **Gap**: "no good tool for...", "missing", "lacking"
+- **Difficulty**: "hard to...", "struggle with..."
+- **Broken**: "buggy", "unreliable", "constantly breaks"
+- **Opportunity**: "ripe for disruption", "room for..."
+
+**When to use:**
+- Markdown: Read justifications and explore idea sources
+- JSON: Programmatic access for building dashboards or filtering ideas
+
+---
+
 ## Part 4: Command Reference
 
 Here's every command this tool supports.
@@ -988,6 +1125,49 @@ hn-intel analyze --period week --n-clusters 6 --max-features 750
 - Testing different parameters before running full reports
 
 **Difference from `report`:** This just prints to the terminal. Use `report` to save files.
+
+---
+
+### hn-intel ideas
+
+**Purpose:** Surface high-impact project ideas from blog pain signals
+
+**Usage:**
+```bash
+hn-intel ideas [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--max-features` | `500` | How many words to track for TF-IDF analysis |
+| `--top-n` | `20` | Maximum number of ideas to surface |
+| `--period` | `month` | Time period for trends (`month` or `week`) |
+| `--output-dir` | None | Optional directory to save ideas.md and ideas.json |
+
+**Examples:**
+
+```bash
+# Surface top 20 ideas (print to terminal)
+hn-intel ideas
+
+# Surface top 10 ideas
+hn-intel ideas --top-n 10
+
+# Save ideas to files
+hn-intel ideas --output-dir output
+
+# Use weekly trends for scoring
+hn-intel ideas --period week --top-n 15 --output-dir output
+```
+
+**When to use:**
+- Discovering what tools and solutions developers are wishing for
+- Finding project ideas backed by real pain points from influential blogs
+- Generating a ranked list of opportunities to explore
+
+**Difference from `report`:** The `ideas` command only surfaces ideas (not trends, network, or clusters). Use `report` to generate all reports at once.
 
 ---
 
@@ -1411,6 +1591,7 @@ You now know how to:
 - Install and set up the HN Blog Intelligence Platform
 - Fetch blog posts from 92 tech blogs
 - Run analysis to discover trending topics, influential blogs, and blog clusters
+- Surface project ideas from pain signals in blog content
 - Generate detailed reports
 - Interpret the output files
 - Troubleshoot common issues

@@ -28,8 +28,11 @@ The tool also scans blog post content for URLs that link to other blogs in the d
 **Step 4: Clustering and Similarity**
 Finally, the tool uses K-means clustering (an unsupervised machine learning algorithm) to group similar blogs together. It converts each blog into a high-dimensional vector based on its vocabulary, then finds natural groupings. For example, it might discover that blogs about Linux systems administration cluster together, separate from blogs about web development. It also computes cosine similarity scores between every pair of blogs to quantify how similar their content is.
 
+**Step 5: Project Ideas from Pain Signals**
+The tool mines blog content for pain-point language — wishes ("I wish there was..."), frustrations ("drives me crazy"), gaps ("no good tool for..."), difficulties ("hard to..."), broken experiences ("constantly breaks"), and opportunities ("ripe for disruption"). It extracts these pain signals, cross-references them with emerging trends and blog authority (PageRank), clusters related signals into coherent project idea themes using agglomerative clustering, and ranks each idea by a composite impact score (trend momentum, authority, breadth across blogs, and recency). Each idea includes full source attribution back to the original blog posts and a written justification.
+
 **Output**
-All analysis results are saved as human-readable Markdown reports and machine-readable JSON files. You get trend reports, network graphs, cluster assignments, and similarity matrices.
+All analysis results are saved as human-readable Markdown reports and machine-readable JSON files. You get trend reports, network graphs, cluster assignments, similarity matrices, and project idea reports with ranked opportunities.
 
 ---
 
@@ -51,12 +54,13 @@ hn_popular_blogs_bestpartnerstv/
 ├── hn_intel/                      # Main source code package
 │   ├── __init__.py                # Package initializer (marks directory as Python package)
 │   ├── analyzer.py                # TF-IDF trend analysis and keyword detection
-│   ├── cli.py                     # Click-based CLI commands (fetch, status, analyze, report)
+│   ├── cli.py                     # Click-based CLI commands (fetch, status, analyze, report, ideas)
 │   ├── clusters.py                # K-means clustering and similarity computation
 │   ├── db.py                      # SQLite schema initialization and connection handling
 │   ├── fetcher.py                 # RSS feed fetching and parsing logic
+│   ├── ideas.py                   # Pain signal extraction, scoring, and project idea generation
 │   ├── network.py                 # Citation extraction, graph building, PageRank
-│   └── reports.py                 # Markdown and JSON report generation
+│   └── reports.py                 # Markdown and JSON report generation (including ideas reports)
 │
 ├── output/                        # Generated reports (created by report command)
 │   ├── summary.md                 # High-level summary of all analyses
@@ -65,14 +69,17 @@ hn_popular_blogs_bestpartnerstv/
 │   ├── network.md                 # Citation network analysis report
 │   ├── network.json               # Graph data in JSON format
 │   ├── clusters.md                # Blog clustering results
-│   └── clusters.json              # Cluster assignments and similarity matrix
+│   ├── clusters.json              # Cluster assignments and similarity matrix
+│   ├── ideas.md                   # Ranked project ideas with justifications and sources
+│   └── ideas.json                 # Machine-readable project idea data
 │
-├── tests/                         # Test suite (73 passing tests)
+├── tests/                         # Test suite (97 passing tests)
 │   ├── __init__.py                # Test package initializer
 │   ├── test_analyzer.py           # Tests for TF-IDF and trend detection
 │   ├── test_clusters.py           # Tests for clustering algorithms
 │   ├── test_db.py                 # Tests for database operations
 │   ├── test_fetcher.py            # Tests for RSS feed fetching
+│   ├── test_ideas.py              # Tests for pain signal extraction and idea generation
 │   ├── test_network.py            # Tests for citation extraction and PageRank
 │   ├── test_opml_parser.py        # Tests for OPML parsing
 │   └── test_reports.py            # Tests for report generation
@@ -292,18 +299,22 @@ hn-intel report
 
 **What it does:**
 1. Re-runs the analysis pipeline (same as `analyze` command)
-2. Generates 7 report files in `output/` directory:
-   - `summary.md`: Overview with key metrics and top results
+2. Surfaces project ideas from pain signals in blog content
+3. Generates 9 report files in `output/` directory:
+   - `summary.md`: Overview with key metrics, top results, and top project ideas
    - `trends.md`: Detailed trend analysis in Markdown
    - `trends.json`: Trend data in JSON format
    - `network.md`: Citation network analysis
    - `network.json`: Graph structure as JSON
    - `clusters.md`: Blog cluster descriptions
    - `clusters.json`: Cluster assignments and similarity matrix
+   - `ideas.md`: Ranked project ideas with justifications, sources, and key quotes
+   - `ideas.json`: Machine-readable project idea data
 
 **Expected output:**
 ```
 Running analysis...
+Surfacing project ideas...
 Generating reports...
 
 Reports written to output/:
@@ -314,6 +325,8 @@ Reports written to output/:
   output/network.json
   output/clusters.md
   output/clusters.json
+  output/ideas.md
+  output/ideas.json
 ```
 
 **Time:** ~10-30 seconds
@@ -364,6 +377,24 @@ Run analysis pipeline and print summary to console (no files generated).
 ```bash
 hn-intel analyze --max-features 1000 --n-clusters 10 --period week
 ```
+
+### `hn-intel ideas`
+
+Surface high-impact project ideas from blog pain signals.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--max-features` | int | `500` | Maximum number of TF-IDF features |
+| `--top-n` | int | `20` | Number of ideas to surface |
+| `--period` | choice | `month` | Trend aggregation period: `month` or `week` |
+| `--output-dir` | string | None | Optional directory to write ideas.md and ideas.json |
+
+**Example:**
+```bash
+hn-intel ideas --top-n 10 --output-dir output
+```
+
+---
 
 ### `hn-intel report`
 
@@ -461,11 +492,44 @@ Detailed cluster data and similarity matrix:
 
 **Use case:** Programmatic access to clustering and similarity scores.
 
+### `ideas.md`
+Ranked project ideas with:
+- Composite impact scores (0 to 1) combining trend momentum, authority, breadth, and recency
+- Written justifications explaining why each idea has high impact
+- Source attribution linking back to specific blog posts and pain signals
+- Key quotes from the original blog content
+- Pain type breakdown (wish, frustration, gap, difficulty, broken, opportunity)
+
+**Use case:** Discovering actionable project opportunities backed by real developer pain points.
+
+### `ideas.json`
+Machine-readable JSON containing:
+```json
+{
+  "ideas": [
+    {
+      "idea_id": 0,
+      "label": "keyword1, keyword2, keyword3",
+      "impact_score": 0.72,
+      "justification": "3 blogs independently describe this pain point...",
+      "keywords": ["keyword1", "keyword2"],
+      "signal_count": 5,
+      "blog_count": 3,
+      "pain_type_breakdown": {"frustration": 3, "gap": 2},
+      "representative_quote": "I wish there was a better way to...",
+      "sources": [...]
+    }
+  ]
+}
+```
+
+**Use case:** Programmatic access to project ideas for building dashboards or feeding into other tools.
+
 ---
 
 ## Running Tests
 
-The project includes a comprehensive test suite with 73 tests across 7 test files.
+The project includes a comprehensive test suite with 97 tests across 8 test files.
 
 **Run all tests:**
 ```bash
@@ -484,7 +548,7 @@ tests/test_analyzer.py::test_detect_emerging_topics PASSED
 tests/test_clusters.py::test_compute_blog_vectors PASSED
 tests/test_clusters.py::test_cluster_blogs PASSED
 ...
-========== 73 passed in 2.34s ==========
+========== 97 passed in 3.12s ==========
 ```
 
 ### Test Coverage
@@ -495,6 +559,7 @@ tests/test_clusters.py::test_cluster_blogs PASSED
 | `test_clusters.py` | 10 | K-means clustering, similarity matrices, cluster labeling |
 | `test_db.py` | 8 | Database schema, blog/post insertion, uniqueness constraints |
 | `test_fetcher.py` | 15 | RSS parsing, feed fetching, error handling, deduplication |
+| `test_ideas.py` | 24 | Pain signal extraction, scoring, clustering, idea generation, CLI integration |
 | `test_network.py` | 11 | URL extraction, citation graphs, PageRank computation |
 | `test_opml_parser.py` | 9 | OPML parsing, feed URL extraction, malformed input handling |
 | `test_reports.py` | 8 | Report generation, file I/O, Markdown/JSON formatting |
@@ -542,29 +607,27 @@ python -m pytest tests/ --cov=hn_intel --cov-report=html
 │ - posts     │
 └──────┬──────┘
        │
-       ├──────────────┬──────────────┬──────────────┐
-       │              │              │              │
-       v              v              v              v
-┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-│ Analyzer │   │ Network  │   │ Clusters │   │ Reports  │
-│          │   │          │   │          │   │          │
-│ TF-IDF   │   │ Citation │   │ K-means  │   │ Markdown │
-│ Trends   │   │ PageRank │   │ Cosine   │   │ JSON     │
-└────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘
-     │              │              │              │
-     └──────────────┴──────────────┴──────────────┘
-                            │
-                            v
-                    ┌───────────────┐
-                    │ output/       │
-                    │ - summary.md  │
-                    │ - trends.md   │
-                    │ - trends.json │
-                    │ - network.md  │
-                    │ - network.json│
-                    │ - clusters.md │
-                    │ - clusters.json│
-                    └───────────────┘
+       ├──────────────┬──────────────┬──────────────┬──────────────┐
+       │              │              │              │              │
+       v              v              v              v              v
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ Analyzer │   │ Network  │   │ Clusters │   │  Ideas   │   │ Reports  │
+│          │   │          │   │          │   │          │   │          │
+│ TF-IDF   │   │ Citation │   │ K-means  │   │ Pain     │   │ Markdown │
+│ Trends   │   │ PageRank │   │ Cosine   │   │ Signals  │   │ JSON     │
+└────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘
+     │              │              │              │              │
+     └──────────────┴──────────────┴──────────────┴──────────────┘
+                                    │
+                                    v
+                    ┌─────────────────────┐
+                    │ output/             │
+                    │ - summary.md        │
+                    │ - trends.md/.json   │
+                    │ - network.md/.json  │
+                    │ - clusters.md/.json │
+                    │ - ideas.md/.json    │
+                    └─────────────────────┘
 ```
 
 ### Module Responsibilities
@@ -587,11 +650,14 @@ Extracts URLs from post content, identifies citations to other blogs in the data
 **clusters.py**
 Converts blogs to TF-IDF vectors (based on all their posts), applies K-means clustering algorithm (scikit-learn), computes cosine similarity between all blog pairs, generates cluster labels from top keywords.
 
+**ideas.py**
+Mines blog content for pain-point language (wishes, frustrations, gaps, difficulties, broken experiences, opportunities) using regex patterns. Extracts pain signals, scores them using a composite of trend momentum, blog authority (PageRank), breadth across blogs, and recency. Clusters related signals into coherent project idea themes using agglomerative clustering on TF-IDF vectors. Generates written justifications for each idea with full source attribution.
+
 **reports.py**
-Takes analysis results and generates formatted Markdown and JSON files. Uses tabulate for table formatting. Writes to output directory.
+Takes analysis results and generates formatted Markdown and JSON files. Uses tabulate for table formatting. Writes to output directory. Includes project ideas reports (ideas.md, ideas.json).
 
 **cli.py**
-Command-line interface using Click library. Defines four commands (fetch, status, analyze, report) with options and help text. Entry point is registered in pyproject.toml.
+Command-line interface using Click library. Defines five commands (fetch, status, analyze, report, ideas) with options and help text. Entry point is registered in pyproject.toml.
 
 ---
 
