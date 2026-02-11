@@ -11,21 +11,20 @@ pip install -e ".[dev]"
 # CLI (entry point: hn_intel.cli:main)
 hn-intel fetch                # Fetch RSS feeds → SQLite
 hn-intel status               # Show DB stats
-hn-intel analyze              # Run analysis, print summary
 hn-intel ideas                # Surface project ideas from pain signals
-hn-intel report               # Run analysis + generate all reports to output/
+hn-intel ideas --output-dir output  # Save ideas.md + ideas.json
 
-# Testing (109 tests, all use in-memory SQLite)
+# Testing (120 tests, all use in-memory SQLite)
 python -m pytest tests/ -v
-python -m pytest tests/test_analyzer.py -v                    # Single file
-python -m pytest tests/test_analyzer.py::test_compute_trends -v  # Single test
+python -m pytest tests/test_ideas.py -v                    # Single file
+python -m pytest tests/test_ideas.py::test_extract_pain_signals -v  # Single test
 ```
 
 ## Architecture
 
-Python CLI tool analyzing 92 HN popular blog RSS feeds. Pipeline: OPML → fetch → SQLite → analysis → reports.
+Python CLI tool that mines 92 HN popular blog RSS feeds for project ideas based on developer pain signals.
 
-**Data flow**: `opml_parser` → `fetcher` (stores to DB) → analysis modules (`analyzer`, `network`, `clusters`, `ideas`) all read from SQLite via `db.get_all_posts()` → `reports` writes Markdown + JSON to `output/`.
+**Data flow**: `opml_parser` → `fetcher` (stores to DB) → `ideas.py` (extracts pain signals, scores, clusters into ideas; internally uses `analyzer`, `network` for trend/authority data) → `reports.py` writes ideas.md + ideas.json to `output/`.
 
 **Key design decisions**:
 - All analysis modules receive a `sqlite3.Connection` and call `get_all_posts(conn)` which returns `sqlite3.Row` objects (dict-like access: `row["title"]`)
@@ -38,7 +37,7 @@ Python CLI tool analyzing 92 HN popular blog RSS feeds. Pipeline: OPML → fetch
 
 ## Database
 
-SQLite at `data/hn_intel.db` (gitignored). Three tables: `blogs` (keyed by `feed_url` UNIQUE), `posts` (keyed by `url` UNIQUE, `blog_id` FK), `citations` (`source_blog_id` → `target_blog_id`). WAL mode + foreign keys enabled. Schema in `db.init_db()`.
+SQLite at `data/hn_intel.db` (gitignored). Three tables: `blogs` (keyed by `feed_url` UNIQUE, also has `last_fetched`, `fetch_status`), `posts` (keyed by `url` UNIQUE, `blog_id` FK), `citations` (`source_post_id`, `source_blog_id` → `target_blog_id`, `target_url`). WAL mode + foreign keys enabled. Schema in `db.init_db()`.
 
 ## Test Patterns
 
@@ -49,33 +48,31 @@ conn.row_factory = sqlite3.Row
 conn.execute("PRAGMA foreign_keys=ON")
 init_db(conn)
 ```
-Tests seed data with `upsert_blogs()` + `insert_post()`. HTTP calls in `test_fetcher.py` are mocked. CLI tests use `click.testing.CliRunner`.
+Tests seed data with `upsert_blogs()` + `insert_post()`. HTTP calls in `test_fetcher.py` are mocked. CLI tests use `click.testing.CliRunner`. Test fixtures use relative dates (`date.today() - timedelta(days=60)`) to avoid expiring past the 12-month date filter.
 
-## TF-IDF Configuration
+## Ideas Pipeline (ideas.py)
 
-Both `analyzer.py` and `clusters.py` use the same vectorizer pattern:
-- `token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z0-9]{2,}\b"` (3+ chars, must start with letter)
-- `min_df=min(3, len(documents))` (adaptive for small corpora)
-- `ngram_range=(1, 2)`, `max_df=0.7`, `stop_words="english"`
+The core feature. `generate_ideas()` orchestrates the full pipeline:
 
-`ideas.py` uses a different stop words config: combines `ENGLISH_STOP_WORDS` with `_PAIN_STOP_WORDS` (120+ pain-trigger and filler terms) to keep labels domain-focused.
+1. **Extract pain signals** — regex scan for 6 types (wish, frustration, gap, difficulty, broken, opportunity). Date filter skips posts older than `max_age_days` (default 365). Deduplicates by `(post_url, signal_type)` keeping longest match.
 
-## Pain Signal Scoring (ideas.py)
+2. **TF-IDF vectorize** — title-weighted documents (`"{title} {title} {signal_text}"`). Stop words: sklearn English + `_PAIN_STOP_WORDS` (120+ pain-trigger terms).
 
-Composite score weights: trend momentum (0.35), authority/PageRank (0.25), breadth across blogs (0.25), recency (0.15). Six signal types: wish, frustration, gap, difficulty, broken, opportunity. Clustering uses title-weighted TF-IDF (title repeated 2x + signal text) with `AgglomerativeClustering` at cosine similarity threshold 0.5.
+3. **Score signals** — composite: trend momentum (0.35) + authority/PageRank (0.25) + breadth (0.25) + recency (0.15). Internally calls `compute_trends()`, `extract_citations()`, `build_citation_graph()`, `compute_centrality()`.
 
-**Label generation**: `_extract_title_keywords()` extracts keywords from post titles (not signal text) using a two-tier strategy: (1) words appearing in 2+ titles in the cluster (theme words), (2) fallback to highest-impact signal's title. Keywords are filtered against the corpus TF-IDF vocabulary to remove rare proper nouns. Labels use `_LABEL_TEMPLATES`: wish→"Better {}", frustration→"Improved {}", gap→"{} Solution", difficulty→"Simplified {}", broken→"Reliable {}", opportunity→"{} Platform".
+4. **Cluster** — `AgglomerativeClustering` at cosine similarity threshold 0.5. After clustering: breadth updated, scores recomputed, ideas sorted.
 
-**Pain-trigger stop words**: `_PAIN_STOP_WORDS` (120+ words: pain triggers, generic verbs, filler) combined with sklearn's English stop words in both `extract_signal_keywords()` and `_extract_title_keywords()`.
+5. **Label** — `_extract_title_keywords()` from post titles (2+ title overlap = theme words). `_LABEL_TEMPLATES`: wish→"Better {}", frustration→"Improved {}", gap→"{} Solution", difficulty→"Simplified {}", broken→"Reliable {}", opportunity→"{} Platform".
 
-**Signal deduplication**: `extract_pain_signals()` deduplicates by `(post_url, signal_type)`, keeping only the longest match per post+type pair. Different signal types from the same post are preserved.
+6. **Filter & renumber** — remove ideas with `blog_count < 2`, renumber `idea_id` sequentially.
 
-**Quality filtering**: `generate_ideas()` filters out ideas with `blog_count < 2` when multi-blog ideas exist, removing low-quality singletons.
+## Report Rendering (reports.py)
+
+`generate_ideas_report()` groups evidence sources by `post_url` via `_group_sources_by_post()` so the same post appears once with multiple pain signals as nested bullet points.
 
 ## Gotchas
 
 - `data/` and `output/` are gitignored; only `docs/hn-blogs.opml` is versioned input
-- K-means will fail if `n_clusters` > number of blogs with posts
+- `generate_ideas()` internally runs a full sub-pipeline (trends, citations, PageRank)
 - Citation graph is typically sparse (depends on blogs linking to each other)
-- `generate_ideas()` internally calls `compute_trends()`, `extract_citations()`, `build_citation_graph()`, and `compute_centrality()` — it runs a full sub-pipeline
-- The `report` command also calls `generate_ideas()` separately, so ideas analysis runs as part of report generation
+- K-means in `clusters.py` will fail if `n_clusters` > number of blogs with posts

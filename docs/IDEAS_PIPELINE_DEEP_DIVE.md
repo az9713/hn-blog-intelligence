@@ -153,7 +153,7 @@ Each match also records:
 
 ## 4. Stage 3: Date Filtering
 
-**Code**: `ideas.py:extract_pain_signals()` (date filter block, line ~190)
+**Code**: `ideas.py:extract_pain_signals()` (date filter block, line ~186)
 
 Before scanning for pain patterns, each post is checked against the cutoff date:
 
@@ -177,7 +177,7 @@ Posts with empty or unparseable `published` fields are **kept** (conservative â€
 
 ## 5. Stage 4: Signal Deduplication
 
-**Code**: `ideas.py:extract_pain_signals()` (dedup block, line ~196)
+**Code**: `ideas.py:extract_pain_signals()` (dedup block, line ~183)
 
 The seangoedecke.com "Why it takes months..." post matches `difficulty` twice (two separate sentences both contain "difficult to" or "hard to"). Deduplication keeps only the longest match per `(post_url, signal_type)` pair:
 
@@ -201,7 +201,7 @@ This is why this single post contributes 3 of the 6 signals in the final idea.
 
 ## 6. Stage 5: TF-IDF Vectorization
 
-**Code**: `ideas.py:extract_signal_keywords()` (line ~231)
+**Code**: `ideas.py:extract_signal_keywords()` (line ~245)
 
 All pain signals across the entire corpus (not just these 6) are vectorized together. Each signal's document is constructed as:
 
@@ -243,7 +243,7 @@ The output is a sparse matrix where each row is a signal and each column is a TF
 
 ## 7. Stage 6: Trend and Authority Scoring
 
-**Code**: `ideas.py:score_ideas()` (line ~269)
+**Code**: `ideas.py:score_ideas()` (line ~283)
 
 Before clustering, each signal is independently scored on four dimensions. Two of these (trend, authority) require data from other modules.
 
@@ -306,7 +306,7 @@ Set to **0.0** at this stage. It requires cluster information (how many distinct
 
 ## 8. Stage 7: Composite Impact Scoring
 
-**Code**: `ideas.py:score_ideas()` (line ~341)
+**Code**: `ideas.py:score_ideas()` (line ~355)
 
 Each signal gets a preliminary score (breadth = 0 at this point):
 
@@ -334,7 +334,7 @@ These preliminary scores determine which signal is the "representative quote" an
 
 ## 9. Stage 8: Agglomerative Clustering
 
-**Code**: `ideas.py:cluster_signals()` (line ~412)
+**Code**: `ideas.py:cluster_signals()` (line ~426)
 
 All signals across the entire corpus are clustered together, not just the 6 that end up in this idea.
 
@@ -365,7 +365,7 @@ Signals about completely different domains (e.g., DNS resolution, database migra
 
 ## 10. Stage 9: Breadth Update and Re-ranking
 
-**Code**: `ideas.py:cluster_signals()` (line ~470)
+**Code**: `ideas.py:cluster_signals()` (line ~484)
 
 After clustering, the breadth dimension can finally be computed. It measures what fraction of all signaling blogs are represented in this idea's cluster.
 
@@ -450,7 +450,7 @@ If the dominant type had been `"broken"`, the label would have been `"Reliable M
 
 ## 12. Stage 11: Quality Filtering and Renumbering
 
-**Code**: `ideas.py:generate_ideas()` (line ~690)
+**Code**: `ideas.py:generate_ideas()` (line ~655)
 
 After clustering produces all ideas, `generate_ideas()` applies a quality filter:
 

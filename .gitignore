@@ -4,3 +4,7 @@ output/
 __pycache__/
 *.egg-info/
 .venv/
+
+
+
+.ignore/
